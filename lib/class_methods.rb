@@ -137,7 +137,7 @@ module ActsAsSolr #:nodoc:
           add_batch = items.collect { |content| content.to_solr_doc }
     
           if items.size > 0
-            solr_add add_batch
+            solr_add add_batch.compact
             solr_commit
           end
     
