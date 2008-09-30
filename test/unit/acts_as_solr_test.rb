@@ -4,6 +4,11 @@ class Encyclopedia < ActiveRecord::Base
   set_table_name :books
 end
 
+class Dictionary < ActiveRecord::Base
+  set_table_name :books
+  acts_as_solr :fields => [:name], :noncritial_index => true
+end
+ 
 class ActsAsSolrTest < Test::Unit::TestCase
   
   fixtures :books, :movies, :electronics, :postings, :authors
@@ -209,7 +214,7 @@ class ActsAsSolrTest < Test::Unit::TestCase
     Book.find(:first).solr_destroy
     assert_equal 0, Book.count_by_solr('splinter')
     
-    Book.find(:first).solr_save
+    Book.find(:first).solr_save(true)
     assert_equal 1, Book.count_by_solr('splinter')
   end
   
@@ -437,5 +442,40 @@ class ActsAsSolrTest < Test::Unit::TestCase
     assert_equal "Novella: Something Short", Encyclopedia.new(:name => "Something Short").name_for_solr
     Encyclopedia.acts_as_solr
     assert_equal "Novella: Something Short", Encyclopedia.new(:name => "Something Short").name_for_solr 
+  end
+
+  def test_should_not_stop_save_if_solr_commit_fails_when_noncritical_index_is_true
+    b = Dictionary.new(:name => "test_should_not_stop_save_if_solr_commit_fails", :category_id => 1, :author => 'Peter Williams')
+    b.stubs(:solr_commit).raises(Class.new(Exception), "something bad happened")
+
+    assert_nothing_raised {
+      b.save!
+    }
+  end
+
+  def test_should_stop_save_if_solr_commit_fails_when_noncritical_index_is_false
+    my_exception_class = Class.new(Exception)
+    b = Book.new(:name => "test_should_stop_save_if_solr_commit_fails_when_noncritical_index_is_false", :category_id => 1, :author => 'Peter Williams')
+    b.stubs(:solr_commit).raises(my_exception_class, "something bad happened")
+
+    assert_raise(my_exception_class) {
+      b.save!
+    }
+  end
+
+  def test_should_not_reindex_if_no_indexed_fields_are_changed
+    b = Dictionary.create!(:name=> "my dictionary", :author => "unknown", :category_id => 1)
+    b.expects(:solr_add).never
+
+    b.author = "me"
+    b.save!
+  end
+
+  def test_should_be_reindex_if_an_indexed_field_is_changed
+    b = Dictionary.create!(:name=> "my dictionary", :author => "unknown", :category_id => 1)
+    b.expects(:solr_add).once
+
+    b.name = "Webster's Dictionary"
+    b.save!
   end
 end

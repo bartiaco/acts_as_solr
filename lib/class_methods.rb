@@ -137,7 +137,7 @@ module ActsAsSolr #:nodoc:
           add_batch = items.collect { |content| content.to_solr_doc }
     
           if items.size > 0
-            solr_add add_batch
+            solr_add add_batch.compact
             solr_commit
           end
     
@@ -147,7 +147,7 @@ module ActsAsSolr #:nodoc:
         end while items.nil? || items.size > 0
       else
         items = finder.call(self, {})
-        items.each { |content| content.solr_save }
+        items.each { |content| content.solr_save(true) }
         items_processed = items.size
       end
       solr_optimize

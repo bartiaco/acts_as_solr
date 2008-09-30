@@ -7,16 +7,42 @@ module ActsAsSolr #:nodoc:
       "#{self.class.name}:#{record_id(self)}"
     end
 
+    def solr_indexed_fields
+      configuration[:solr_fields].map do |f|
+        f = f.first if f.respond_to?(:first)
+        f.to_s
+      end
+    end
+
+    def needs_solr_indexing?
+      return true unless respond_to?(:changed)
+      return true unless configuration.has_key?(:solr_fields)
+      return true unless configuration[:facets].blank?
+      # We can figure out if the changed fields are indexed by solr.
+      
+      changed_indexed_fields = (changed & solr_indexed_fields)
+      !changed_indexed_fields.empty?
+    end
+
     # saves to the Solr index
-    def solr_save
+    def solr_save(force = false)
       return true unless configuration[:if] 
+
       if evaluate_condition(configuration[:if], self) 
+        return true unless needs_solr_indexing? || force  # This object does not need to be reindexed
         logger.debug "solr_save: #{self.class.name} : #{record_id(self)}"
         solr_add to_solr_doc
         solr_commit if configuration[:auto_commit]
         true
       else
         solr_destroy
+      end
+    rescue Exception => e
+      if configuration[:noncritial_index]
+        # Just log the failure and return as if it worked
+        logger.error "Could not add or remove document in Solr: #{$!}"
+      else
+        raise e
       end
     end
 
@@ -31,42 +57,48 @@ module ActsAsSolr #:nodoc:
     # convert instance to Solr document
     def to_solr_doc
       logger.debug "to_solr_doc: creating doc for class: #{self.class.name}, id: #{record_id(self)}"
-      doc = Solr::Document.new
-      doc.boost = validate_boost(configuration[:boost]) if configuration[:boost]
+      begin
+        raise ActiveRecord::RecordInvalid.new(self) unless self.valid?
+        doc = Solr::Document.new
+        doc.boost = validate_boost(configuration[:boost]) if configuration[:boost]
       
-      doc << {:id => solr_id,
-              solr_configuration[:type_field] => self.class.name,
-              solr_configuration[:primary_key_field] => record_id(self).to_s}
+        doc << {:id => solr_id,
+                solr_configuration[:type_field] => self.class.name,
+                solr_configuration[:primary_key_field] => record_id(self).to_s}
 
-      # iterate through the fields and add them to the document,
-      configuration[:solr_fields].each do |field_name, options|
-        field_boost = options[:boost] || solr_configuration[:default_boost]
-        field_type = get_solr_field_type(options[:type])
-        value = self.send("#{field_name}_for_solr")
-        value = set_value_if_nil(field_type) if value.to_s == ""
+        # iterate through the fields and add them to the document,
+        configuration[:solr_fields].each do |field_name, options|
+          field_boost = options[:boost] || solr_configuration[:default_boost]
+          field_type = get_solr_field_type(options[:type])
+          value = self.send("#{field_name}_for_solr")
+          value = set_value_if_nil(field_type) if value.to_s == ""
         
-        # add the field to the document, but only if it's not the id field
-        # or the type field (from single table inheritance), since these
-        # fields have already been added above.
-        if field_name.to_s != self.class.primary_key and field_name.to_s != "type"
-          suffix = get_solr_field_type(field_type)
-          # This next line ensures that e.g. nil dates are excluded from the 
-          # document, since they choke Solr. Also ignores e.g. empty strings, 
-          # but these can't be searched for anyway: 
-          # http://www.mail-archive.com/solr-dev@lucene.apache.org/msg05423.html
-          next if value.nil? || value.to_s.strip.empty?
-          [value].flatten.each do |v|
-            v = set_value_if_nil(suffix) if value.to_s == ""
-            field = Solr::Field.new("#{field_name}_#{suffix}" => ERB::Util.html_escape(v.to_s))
-            field.boost = validate_boost(field_boost)
-            doc << field
+          # add the field to the document, but only if it's not the id field
+          # or the type field (from single table inheritance), since these
+          # fields have already been added above.
+          if field_name.to_s != self.class.primary_key and field_name.to_s != "type"
+            suffix = get_solr_field_type(field_type)
+            # This next line ensures that e.g. nil dates are excluded from the 
+            # document, since they choke Solr. Also ignores e.g. empty strings, 
+            # but these can't be searched for anyway: 
+            # http://www.mail-archive.com/solr-dev@lucene.apache.org/msg05423.html
+            next if value.nil? || value.to_s.strip.empty?
+            [value].flatten.each do |v|
+              v = set_value_if_nil(suffix) if value.to_s == ""
+              field = Solr::Field.new("#{field_name}_#{suffix}" => ERB::Util.html_escape(v.to_s))
+              field.boost = validate_boost(field_boost)
+              doc << field
+            end
           end
         end
-      end
       
-      add_includes(doc) if configuration[:include]
-      logger.debug doc.to_xml.to_s
-      return doc
+        add_includes(doc) if configuration[:include]
+        logger.debug doc.to_xml.to_s
+        return doc
+      rescue Exception => e
+        logger.error "Problem creating document for class: #{self.class.name}, id: #{record_id(self)}.\n\t Exception: #{e.message}"
+        return nil
+      end
     end
     
     private
