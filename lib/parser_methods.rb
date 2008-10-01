@@ -83,8 +83,8 @@ module ActsAsSolr #:nodoc:
     end
       
     def solr_type_condition
-      subclasses.inject("(#{solr_configuration[:type_field]}:#{self.name}") do |condition, subclass|
-        condition << " OR #{solr_configuration[:type_field]}:#{subclass.name}"
+      subclasses.inject("(#{solr_configuration[:type_field]}:#{self.name.gsub ':', '\:'}") do |condition, subclass|
+        condition << " OR #{solr_configuration[:type_field]}:#{subclass.name.gsub ':', '\:'}"
       end << ')'
     end
    
@@ -131,16 +131,24 @@ module ActsAsSolr #:nodoc:
     
     # Reorders the instances keeping the order returned from Solr
     def reorder(things, ids)
-      ordered_things = []
-      ids.each do |id|
-        record = things.find {|thing| record_id(thing).to_s == id.to_s} 
-        if record
-          ordered_things << record
-        else
-          # this should fail silently?
-          # logger.error("SOLR index Out of sync! The id #{id} is in the Solr index but missing in the database!")
-          raise("Out of sync! The id #{id} is in the Solr index but missing in the database!")
-        end
+# <<<<<<< HEAD:lib/parser_methods.rb
+#       ordered_things = []
+#       ids.each do |id|
+#         record = things.find {|thing| record_id(thing).to_s == id.to_s} 
+#         if record
+#           ordered_things << record
+#         else
+#           # this should fail silently?
+#           # logger.error("SOLR index Out of sync! The id #{id} is in the Solr index but missing in the database!")
+#           raise("Out of sync! The id #{id} is in the Solr index but missing in the database!")
+#         end
+# =======
+      ordered_things = Array.new(things.size)
+      raise "Out of sync! Found #{ids.size} items in index, but only #{things.size} were found in database!" unless things.size == ids.size
+      things.each do |thing|
+        position = ids.index(thing.id)
+        ordered_things[position] = thing
+# >>>>>>> kengruven:lib/parser_methods.rb
       end
       ordered_things
     end
@@ -204,5 +212,4 @@ module ActsAsSolr #:nodoc:
       end
     end
   end
-
 end

@@ -9,3 +9,10 @@ ruby:
   category_id: 2
   name: Ruby for Dummies
   author: Peter McPeterson
+
+love:
+  id: 3
+  category_id: 1
+  name: Symposium
+  author: Plato
+  type: Howto

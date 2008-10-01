@@ -13,6 +13,7 @@ require File.dirname(__FILE__) + '/../config/environment.rb'
 # Load Models
 models_dir = File.join(File.dirname( __FILE__ ), 'models')
 Dir[ models_dir + '/*.rb'].each { |m| require m }
+Dir[ models_dir + '/**/*.rb'].each { |m| require m }
 
 Test::Unit::TestCase.fixture_path = File.dirname(__FILE__) + "/fixtures/"
 
