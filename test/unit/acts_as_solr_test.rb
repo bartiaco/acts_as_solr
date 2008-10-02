@@ -478,4 +478,10 @@ class ActsAsSolrTest < Test::Unit::TestCase
     b.name = "Webster's Dictionary"
     b.save!
   end
+
+  def test_should_not_index_the_record_when_offline_proc_returns_true
+    Gadget.search_disabled = true
+    gadget = Gadget.create(:name => "flipvideo mino")
+    assert_equal 0, Gadget.find_id_by_solr('flipvideo').total
+  end
 end
