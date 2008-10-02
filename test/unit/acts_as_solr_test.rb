@@ -479,9 +479,20 @@ class ActsAsSolrTest < Test::Unit::TestCase
     b.save!
   end
 
+  def Gadget.solr_count
+    find_id_by_solr('flipvideo').total
+  end
+
   def test_should_not_index_the_record_when_offline_proc_returns_true
-    Gadget.search_disabled = true
-    gadget = Gadget.create(:name => "flipvideo mino")
-    assert_equal 0, Gadget.find_id_by_solr('flipvideo').total
+    assert_difference Gadget, :solr_count, 0 do
+      Gadget.search_disabled = true
+      gadget = Gadget.create(:name => "flipvideo mino")
+    end
+  end
+
+  def assert_difference(object, method = nil, difference = 1)
+    initial_value = object.send(method)
+    yield
+    assert_equal initial_value + difference, object.send(method), "#{object}##{method}"
   end
 end
